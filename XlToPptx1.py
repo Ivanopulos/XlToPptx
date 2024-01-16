@@ -1,10 +1,12 @@
+import re
+
 import openpyxl
 import pandas as pd
 from pptx import Presentation
 from decimal import Decimal
 # 1. Прочитать Excel с помощью pandas
-s_n='01'
-df = pd.read_excel('Данные для презентации.xlsx', sheet_name=s_n)
+s_n = 'Преза 20'#########################################################################################################
+df = pd.read_excel('Справка по субъекту.xlsx', sheet_name=s_n)#Данные для презентации.xlsx###############################
 df.fillna("", inplace=True)
 #print(df['replace_value'])
 
@@ -14,7 +16,7 @@ if 'metka' not in df.columns or 'replace_value' not in df.columns:
 
 def format_value(value):
     if isinstance(value, (float, int)):
-        value = Decimal(str(value))  # Преобразовать значение в Decimal для точности
+        value = Decimal(str(round(value, 2)))  # Преобразовать значение в Decimal для точности
         if value % 1 == 0:  # проверка, является ли число целым
             return str(int(value))
         else:
@@ -26,7 +28,7 @@ def format_value(value):
 replace_dict = {metka: format_value(replace_value) for metka, replace_value in zip(df['metka'], df['replace_value'])}
 
 # 2. Открыть презентацию и произвести замены
-presentation = Presentation('Заготовка_Презентация_НММО_расширенная2023.pptx')
+presentation = Presentation('Заготовка Слайд_НММО.pptx')#Заготовка_Презентация_НММО_расширенная2023.pptx#################
 
 def replace_text_in_runs(runs):
     for run in runs:
@@ -79,6 +81,10 @@ def update_embedded_excel(pptx_name, data_file):
     for index, row in data_df.iterrows():
         if str(row['A']).startswith("ppt/"):
             file_path = os.path.join(temp_dir, row['A'])
+            # current_file_path = os.path.abspath(__file__)
+            # current_directory = os.path.dirname(current_file_path)
+            # # Создание полного пути к файлу
+            # file_path = os.path.join(current_directory, 'temp_pptx_content', str(row['A']))
             if os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
                     embedded_df = pd.read_excel(f)
@@ -122,37 +128,39 @@ def update_embedded_excel(pptx_name, data_file):
     shutil.rmtree(temp_dir)
 
 
-pptx_name = "измененная_презентация.pptx"
-data_file = "Данные для презентации.xlsx"
-update_embedded_excel(pptx_name, data_file)
-
-import win32com.client
-
-def update_powerpoint_charts(pptx_path):
-    # Создаем COM-объект для PowerPoint
-    powerpoint = win32com.client.Dispatch("PowerPoint.Application")
-
-    # Открываем презентацию
-    presentation = powerpoint.Presentations.Open(pptx_path)
-
-    for slide in presentation.Slides:
-        for shape in slide.Shapes:
-            if shape.HasChart:
-                # Здесь мы пытаемся "обновить" диаграмму. В вашем случае это может и не привести к результату,
-                # но это максимум, что можно сделать средствами COM-объекта PowerPoint
-                shape.Chart.ChartData.Activate()
-                shape.Chart.ChartData.BreakLink()
-                shape.Chart.Refresh()
-
-                print(f"Обработка диаграммы на слайде {slide.SlideNumber}, название диаграммы: {shape.Name}")
-
-    # Сохраняем и закрываем презентацию
-    presentation.Save()
-    presentation.Close()
-
-    # Закрываем PowerPoint
-    powerpoint.Quit()
-
-
-pptx_path = "C:\\Users\\IMatveev\\PycharmProjects\\XlToPptx\\измененная_презентация.pptx"
-update_powerpoint_charts(pptx_path)
+# pptx_name = "измененная_презентация.pptx"
+# data_file = "Данные для презентации.xlsx"
+# update_embedded_excel(pptx_name, data_file)
+#
+# import win32com.client
+# import time
+# def update_powerpoint_charts(pptx_path):
+#     # Создаем COM-объект для PowerPoint
+#     powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+#
+#     # Открываем презентацию
+#     presentation = powerpoint.Presentations.Open(pptx_path)
+#
+#     for slide in presentation.Slides:
+#         for shape in slide.Shapes:
+#             if shape.HasChart:
+#                 # Здесь мы пытаемся "обновить" диаграмму. В вашем случае это может и не привести к результату,
+#                 # но это максимум, что можно сделать средствами COM-объекта PowerPoint
+#                 shape.Chart.ChartData.Activate()
+#                 time.sleep(0.5)
+#                 shape.Chart.ChartData.BreakLink()
+#                 time.sleep(0.5)
+#                 shape.Chart.Refresh()
+#
+#                 print(f"Обработка диаграммы на слайде {slide.SlideNumber}, название диаграммы: {shape.Name}")
+#
+#     # Сохраняем и закрываем презентацию
+#     presentation.Save()
+#     presentation.Close()
+#
+#     # Закрываем PowerPoint
+#     powerpoint.Quit()
+#
+# current_directory = os.path.dirname(os.path.abspath(__file__))
+# pptx_path = os.path.join(current_directory, "измененная_презентация.pptx")
+# update_powerpoint_charts(pptx_path)
