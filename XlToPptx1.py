@@ -1,12 +1,17 @@
 import re
-
 import openpyxl
 import pandas as pd
+import pywintypes
 from pptx import Presentation
 from decimal import Decimal
+
+import shutil
+from zipfile import ZipFile
+import os
+
 # 1. Прочитать Excel с помощью pandas
-s_n = 'Преза 20'#########################################################################################################
-df = pd.read_excel('Справка по субъекту.xlsx', sheet_name=s_n)#Данные для презентации.xlsx###############################
+s_n = '01'#########################################################################################################
+df = pd.read_excel('Данные для презентации.xlsx', sheet_name=s_n)#Данные для презентации.xlsx###############################
 df.fillna("", inplace=True)
 #print(df['replace_value'])
 
@@ -15,17 +20,39 @@ if 'metka' not in df.columns or 'replace_value' not in df.columns:
     raise ValueError('Не найдены столбцы "metka" или "replace_value"')
 
 def format_value(value):
+    # Проверяем, является ли значение типом float или int
     if isinstance(value, (float, int)):
-        value = Decimal(str(round(value, 2)))  # Преобразовать значение в Decimal для точности
-        if value % 1 == 0:  # проверка, является ли число целым
-            return str(int(value))
+        # Преобразуем значение в Decimal для повышения точности округления
+        ##value = Decimal(str(value)).quantize(Decimal("1.00"))
+        # Форматируем значение с разделителями разрядов, преобразуя запятую в пробел
+        if value % 1 == 0:  # Если число целое
+            formatted_value = f"{int(value):,}".replace(',', ' ')
         else:
-            formatted_value = str(value).rstrip('0').rstrip('.')
-            return formatted_value.replace('.', ',')
+            # Для чисел с плавающей точкой, заменяем точку на запятую после форматирования
+            formatted_value = f"{value:,}".replace(',', ' ').replace('.', ',')
+
+        return formatted_value
     else:
         return str(value)
 
 replace_dict = {metka: format_value(replace_value) for metka, replace_value in zip(df['metka'], df['replace_value'])}
+# def format_value(value, razrad):
+#     if isinstance(value, (float, int)):
+#         # Если разряд равен 0, округляем до целого числа и форматируем без десятичных знаков
+#         if razrad == 0:
+#             formatted_value = f"{int(round(value)):,}".replace(',', ' ')
+#         # Для чисел с плавающей точкой с указанным количеством знаков после запятой
+#         elif isinstance(value, float):
+#             format_string = f"{{:,.{razrad}f}}"
+#             formatted_value = format_string.format(value)
+#             formatted_value = formatted_value.replace(',', ' ').replace('.', ',')
+#         # Для целых чисел, когда разрядность не равна 0
+#         else:
+#             formatted_value = f"{value:,}".replace(',', ' ')
+#         return formatted_value
+#     else:
+#         return str(value)
+# replace_dict = {metka: format_value(replace_value, razrad) for metka, replace_value, razrad in zip(df['metka'], df['replace_value'], df['razrad'])}
 
 # 2. Открыть презентацию и произвести замены
 presentation = Presentation('Заготовка Слайд_НММО.pptx')#Заготовка_Презентация_НММО_расширенная2023.pptx#################
@@ -69,6 +96,42 @@ import zipfile
 import shutil
 from openpyxl import load_workbook
 
+
+def modify_xml_in_zip(file_path, xml_relative_path, new_content):
+    # Ensure the file_path ends with '.zip' for processing
+    original_file_path = file_path
+    file_path_zip = file_path if file_path.endswith('.zip') else file_path + '.zip'
+    if not file_path.endswith('.zip'):
+        os.rename(file_path, file_path_zip)
+
+    # Create a temporary directory for unzipping
+    temp_dir = 'temp_unzip_dir'
+    if not os.path.isdir(temp_dir):
+        os.mkdir(temp_dir)
+
+    # Extract the zip file
+    with zipfile.ZipFile(file_path_zip, 'r') as zip_ref:
+        zip_ref.extractall(temp_dir)
+
+    # Replace the content of the specified XML file
+    xml_path = os.path.join(temp_dir, xml_relative_path)
+    with open(xml_path, 'w') as xml_file:
+        xml_file.write(new_content)
+
+    # Create a new zip file (overwrite the original zip file if necessary)
+    with zipfile.ZipFile(file_path_zip, 'w', zipfile.ZIP_DEFLATED) as zip_ref:
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zip_ref.write(file_path, file_path[len(temp_dir) + 1:])
+
+    # Clean up: remove the temporary directory
+    #shutil.rmtree(temp_dir)
+
+    # If we added '.zip' for processing, rename back to original (without '.zip')
+    if original_file_path != file_path_zip:
+        os.rename(file_path_zip, original_file_path)
+
 def update_embedded_excel(pptx_name, data_file):
     temp_dir = 'temp_pptx_content'
 
@@ -81,13 +144,28 @@ def update_embedded_excel(pptx_name, data_file):
     for index, row in data_df.iterrows():
         if str(row['A']).startswith("ppt/"):
             file_path = os.path.join(temp_dir, row['A'])
-            # current_file_path = os.path.abspath(__file__)
-            # current_directory = os.path.dirname(current_file_path)
-            # # Создание полного пути к файлу
-            # file_path = os.path.join(current_directory, 'temp_pptx_content', str(row['A']))
+
             if os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
                     embedded_df = pd.read_excel(f)
+##
+                backup_dir = os.path.join(temp_dir, "backup")
+                os.makedirs(backup_dir, exist_ok=True)
+                with zipfile.ZipFile(file_path, 'r') as excel_zip:
+                    print(1)
+                    # Ищем файл Table1.xml в архиве
+                    table1_xml_path = 'xl/tables/table1.xml'
+                    if table1_xml_path in excel_zip.namelist():
+                        excel_zip.extract(table1_xml_path, backup_dir)
+                        table1_full_path = os.path.join(backup_dir, table1_xml_path)
+
+                        # Выводим содержимое Table1.xml на экран
+                        try:
+                            with open(table1_full_path, 'r', encoding='utf-8') as table1_file:
+                                nstxt = table1_file.read()
+                                print(nstxt)
+                        except Exception as e:
+                            print(f"Ошибка при чтении файла {table1_full_path}: {e}")
 
                 rows_count = int(row['B'])
                 cols_count = int(row['C'])
@@ -98,22 +176,22 @@ def update_embedded_excel(pptx_name, data_file):
 
                 # Объедините новые данные с embedded_df
                 embedded_df = pd.concat([new_data, embedded_df], ignore_index=True)
-                #new_columns = embedded_df.iloc[0, :cols_count].values
-                #embedded_df.columns = list(new_columns) + list(embedded_df.columns[cols_count:])
-                #embedded_df = embedded_df.drop(0).reset_index(drop=True)
                 embedded_df = embedded_df.iloc[:rows_count, :cols_count]
 
-                #with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                #    embedded_df.to_excel(writer, index=False)
                 wb = load_workbook(file_path)
                 ws = wb["Лист1"]
-                for row_index, row in embedded_df.iterrows():
-                    for col_index, value in enumerate(row):
-                        # Прибавляем 1, так как openpyxl индексирует с 1
+                for row_index, row1 in embedded_df.iterrows():
+                    for col_index, value in enumerate(row1):
                         ws.cell(row=row_index + 1, column=col_index + 1, value=value)
                 print(wb)
                 print(embedded_df)
                 wb.save(file_path)
+                # wb.close()
+                # embedded_df.to_excel(file_path, index=False)
+                #
+                # xml_relative_path = "xl/tables/table1.xml"
+                # modify_xml_in_zip(file_path, xml_relative_path, nstxt)
+
 
 
     # 3. Заархивировать содержимое временной папки
@@ -128,39 +206,48 @@ def update_embedded_excel(pptx_name, data_file):
     shutil.rmtree(temp_dir)
 
 
-# pptx_name = "измененная_презентация.pptx"
-# data_file = "Данные для презентации.xlsx"
-# update_embedded_excel(pptx_name, data_file)
-#
-# import win32com.client
-# import time
-# def update_powerpoint_charts(pptx_path):
-#     # Создаем COM-объект для PowerPoint
-#     powerpoint = win32com.client.Dispatch("PowerPoint.Application")
-#
-#     # Открываем презентацию
-#     presentation = powerpoint.Presentations.Open(pptx_path)
-#
-#     for slide in presentation.Slides:
-#         for shape in slide.Shapes:
-#             if shape.HasChart:
-#                 # Здесь мы пытаемся "обновить" диаграмму. В вашем случае это может и не привести к результату,
-#                 # но это максимум, что можно сделать средствами COM-объекта PowerPoint
-#                 shape.Chart.ChartData.Activate()
-#                 time.sleep(0.5)
-#                 shape.Chart.ChartData.BreakLink()
-#                 time.sleep(0.5)
-#                 shape.Chart.Refresh()
-#
-#                 print(f"Обработка диаграммы на слайде {slide.SlideNumber}, название диаграммы: {shape.Name}")
-#
-#     # Сохраняем и закрываем презентацию
-#     presentation.Save()
-#     presentation.Close()
-#
-#     # Закрываем PowerPoint
-#     powerpoint.Quit()
-#
-# current_directory = os.path.dirname(os.path.abspath(__file__))
-# pptx_path = os.path.join(current_directory, "измененная_презентация.pptx")
-# update_powerpoint_charts(pptx_path)
+
+
+pptx_name = "измененная_презентация.pptx"
+data_file = "Данные для презентации.xlsx"
+update_embedded_excel(pptx_name, data_file)
+
+
+import win32com.client
+import time
+def update_powerpoint_charts(pptx_path):
+    # Создаем COM-объект для PowerPoint
+    powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+
+    # Открываем презентацию
+    presentation = powerpoint.Presentations.Open(pptx_path)
+
+    for slide in presentation.Slides:
+        for shape in slide.Shapes:
+            if shape.HasChart:
+                # Здесь мы пытаемся "обновить" диаграмму. В вашем случае это может и не привести к результату,
+                # но это максимум, что можно сделать средствами COM-объекта PowerPoint
+                try:
+                    shape.Chart.ChartData.Activate()
+                except pywintypes.com_error as e:
+                    print(e)
+                    print("Не удалось активировать данные диаграммы.")
+                #shape.Chart.ChartData.Activate()
+                time.sleep(0.5)
+                shape.Chart.ChartData.BreakLink()
+                time.sleep(0.5)
+                shape.Chart.Refresh()
+
+                print(f"Обработка диаграммы на слайде {slide.SlideNumber}, название диаграммы: {shape.Name}")
+
+    # Сохраняем и закрываем презентацию
+    presentation.Save()
+    presentation.Close()
+
+    # Закрываем PowerPoint
+    powerpoint.Quit()
+
+current_directory = os.path.dirname(os.path.abspath(__file__))
+pptx_path = os.path.join(current_directory, "измененная_презентация.pptx")
+print(pptx_path)
+update_powerpoint_charts(pptx_path)
