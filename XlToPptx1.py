@@ -3,17 +3,31 @@ import openpyxl
 import pandas as pd
 import pywintypes
 from pptx import Presentation
-from decimal import Decimal
-
+import msvcrt
+import time
 import shutil
 from zipfile import ZipFile
 import os
-
+import glob
+import Nadstroika as nd
+print(time.time())
+print(nd.newest(".+\.xlsx"))
 # 1. Прочитать Excel с помощью pandas
-s_n = '01'#########################################################################################################
-df = pd.read_excel('Данные для презентации.xlsx', sheet_name=s_n)#Данные для презентации.xlsx###############################
+s_n = '20'#########################################################################################################
+
+# Находим все Excel файлы в текущей директории
+excel_files = glob.glob('*.xlsx') + glob.glob('*.xls')
+# Получаем список кортежей (время последнего изменения, имя файла) для каждого файла
+files_with_times = [(os.path.getmtime(file), file) for file in excel_files]
+# Сортируем список по времени последнего изменения (по убыванию)
+newest_file = sorted(files_with_times, key=lambda x: x[0], reverse=True)[0][1]
+
+data_file = newest_file
+pptx_name = "измененная_презентация.pptx"
+prz = nd.newest(".+\.pptx")#'Заготовка_Презентация_НММО_регион_2.pptx'#####################################################################
+
+df = pd.read_excel(newest_file, sheet_name=s_n)
 df.fillna("", inplace=True)
-#print(df['replace_value'])
 
 # Проверка на наличие нужных столбцов
 if 'metka' not in df.columns or 'replace_value' not in df.columns:
@@ -55,7 +69,7 @@ replace_dict = {metka: format_value(replace_value) for metka, replace_value in z
 # replace_dict = {metka: format_value(replace_value, razrad) for metka, replace_value, razrad in zip(df['metka'], df['replace_value'], df['razrad'])}
 
 # 2. Открыть презентацию и произвести замены
-presentation = Presentation('Заготовка Слайд_НММО.pptx')#Заготовка_Презентация_НММО_расширенная2023.pptx#################
+presentation = Presentation(prz)#'Заготовка Слайд_НММО.pptx')#Заготовка_Презентация_НММО_расширенная2023.pptx#################
 
 def replace_text_in_runs(runs):
     for run in runs:
@@ -89,7 +103,7 @@ for slide in presentation.slides:
             replace_text_in_runs(paragraph.runs)
 
 
-presentation.save('измененная_презентация.pptx')
+presentation.save(pptx_name)
 
 import os
 import zipfile
@@ -208,8 +222,7 @@ def update_embedded_excel(pptx_name, data_file):
 
 
 
-pptx_name = "измененная_презентация.pptx"
-data_file = "Данные для презентации.xlsx"
+
 update_embedded_excel(pptx_name, data_file)
 
 
@@ -248,6 +261,9 @@ def update_powerpoint_charts(pptx_path):
     powerpoint.Quit()
 
 current_directory = os.path.dirname(os.path.abspath(__file__))
-pptx_path = os.path.join(current_directory, "измененная_презентация.pptx")
+pptx_path = os.path.join(current_directory, pptx_name)
 print(pptx_path)
 update_powerpoint_charts(pptx_path)
+print(time.time())
+msvcrt.getch()
+
